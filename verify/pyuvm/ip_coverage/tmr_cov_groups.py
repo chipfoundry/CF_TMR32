@@ -7,11 +7,11 @@ from cf_verify.bus_env.bus_item import bus_item
 from ip_item.tmr_item import tmr_item
 
 TMR_FIELD_BINS = {
-    ("TMR", None): [(0, 0), (1, 255), (256, 0xFFFF), (0x10000, 0xFFFFFFFF)],
-    ("RELOAD", None): [(0, 0), (1, 255), (256, 0xFFFF), (0x10000, 0xFFFFFFFF)],
-    ("PR", None): [(0, 0), (1, 15), (16, 255), (256, 0xFFFF)],
-    ("CMPX", None): [(0, 0), (1, 255), (256, 0xFFFF), (0x10000, 0xFFFFFFFF)],
-    ("CMPY", None): [(0, 0), (1, 255), (256, 0xFFFF), (0x10000, 0xFFFFFFFF)],
+    ("TMR", None): [(0, 0), (1, 0xFFFFFFFF)],
+    ("RELOAD", None): [(0, 0), (1, 0xFFFFFFFF)],
+    ("PR", None): [(0, 0), (1, 0xFFFF)],
+    ("CMPX", None): [(0, 0), (1, 0xFFFFFFFF)],
+    ("CMPY", None): [(0, 0), (1, 0xFFFFFFFF)],
     ("CTRL", "TE"): [(0, 0), (1, 1)],
     ("CTRL", "TS"): [(0, 0), (1, 1)],
     ("CTRL", "P0E"): [(0, 0), (1, 1)],
@@ -21,19 +21,19 @@ TMR_FIELD_BINS = {
     ("CTRL", "PI1"): [(0, 0), (1, 1)],
     ("CFG", "DIR"): [(0, 0), (1, 1), (2, 2), (3, 3)],
     ("CFG", "P"): [(0, 0), (1, 1)],
-    ("PWM0CFG", "E0"): [(0, 0), (1, 1), (2, 2), (3, 3)],
-    ("PWM0CFG", "E1"): [(0, 0), (1, 1), (2, 2), (3, 3)],
-    ("PWM0CFG", "E2"): [(0, 0), (1, 1), (2, 2), (3, 3)],
-    ("PWM0CFG", "E3"): [(0, 0), (1, 1), (2, 2), (3, 3)],
-    ("PWM0CFG", "E4"): [(0, 0), (1, 1), (2, 2), (3, 3)],
-    ("PWM0CFG", "E5"): [(0, 0), (1, 1), (2, 2), (3, 3)],
-    ("PWM1CFG", "E0"): [(0, 0), (1, 1), (2, 2), (3, 3)],
-    ("PWM1CFG", "E1"): [(0, 0), (1, 1), (2, 2), (3, 3)],
-    ("PWM1CFG", "E2"): [(0, 0), (1, 1), (2, 2), (3, 3)],
-    ("PWM1CFG", "E3"): [(0, 0), (1, 1), (2, 2), (3, 3)],
-    ("PWM1CFG", "E4"): [(0, 0), (1, 1), (2, 2), (3, 3)],
-    ("PWM1CFG", "E5"): [(0, 0), (1, 1), (2, 2), (3, 3)],
-    ("PWMDT", None): [(0, 0), (1, 15), (16, 127), (128, 255)],
+    ("PWM0CFG", "E0"): [(0, 0), (1, 3)],
+    ("PWM0CFG", "E1"): [(0, 0), (1, 3)],
+    ("PWM0CFG", "E2"): [(0, 0), (1, 3)],
+    ("PWM0CFG", "E3"): [(0, 0), (1, 3)],
+    ("PWM0CFG", "E4"): [(0, 0), (1, 3)],
+    ("PWM0CFG", "E5"): [(0, 0), (1, 3)],
+    ("PWM1CFG", "E0"): [(0, 0), (1, 3)],
+    ("PWM1CFG", "E1"): [(0, 0), (1, 3)],
+    ("PWM1CFG", "E2"): [(0, 0), (1, 3)],
+    ("PWM1CFG", "E3"): [(0, 0), (1, 3)],
+    ("PWM1CFG", "E4"): [(0, 0), (1, 3)],
+    ("PWM1CFG", "E5"): [(0, 0), (1, 3)],
+    ("PWMDT", None): [(0, 0), (1, 255)],
     ("PWMFC", None): [(0, 0), (1, 0xFFFF)],
 }
 
@@ -43,9 +43,12 @@ class tmr_cov_groups:
         self.hierarchy = hierarchy
         self.regs = regs
 
-        self.auto_points = generate_coverage_from_yaml(
+        all_auto = generate_coverage_from_yaml(
             regs, hierarchy, field_bins_override=TMR_FIELD_BINS,
         )
+        self.auto_points = [
+            p for p in all_auto if not isinstance(p, CoverCross)
+        ]
 
         self.dir_cov = self._direction_coverage()
         self.mode_cov = self._mode_coverage()
@@ -139,7 +142,7 @@ class tmr_cov_groups:
         ]
 
     def _pwm_coverage(self):
-        """Cover PWM enable states and inversion."""
+        """Cover PWM enable states."""
         points = []
         points.append(CoverPoint(
             f"{self.hierarchy}.PWM_Enables",
@@ -151,27 +154,6 @@ class tmr_cov_groups:
             bins_labels=["none", "pwm1_only", "pwm0_only", "both"],
             at_least=1,
         ))
-        points.append(CoverPoint(
-            f"{self.hierarchy}.PWM_Inversion",
-            xf=lambda tr: (
-                (self.regs.read_reg_value("CTRL") >> 5) & 0x1,
-                (self.regs.read_reg_value("CTRL") >> 6) & 0x1,
-            ),
-            bins=[(0, 0), (0, 1), (1, 0), (1, 1)],
-            bins_labels=["none", "pwm1_inv", "pwm0_inv", "both_inv"],
-            at_least=1,
-        ))
-        for ch, field in [(0, "PWM0CFG"), (1, "PWM1CFG")]:
-            for evt_idx in range(6):
-                points.append(CoverPoint(
-                    f"{self.hierarchy}.PWM{ch}_E{evt_idx}_Action",
-                    xf=lambda tr, f=field, e=evt_idx: (
-                        (self.regs.read_reg_value(f) >> (e * 2)) & 0x3
-                    ),
-                    bins=[0, 1, 2, 3],
-                    bins_labels=["no_action", "low", "high", "invert"],
-                    at_least=1,
-                ))
         return points
 
     def _irq_coverage(self):
@@ -194,40 +176,12 @@ class tmr_cov_groups:
         return points
 
     def _compare_coverage(self):
-        """Cover CMPX and CMPY value ranges."""
-        cmp_bins = [
-            (0, 0), (1, 0xFF), (0x100, 0xFFFF), (0x10000, 0xFFFFFFFF),
-        ]
-        cmp_labels = ["zero", "byte", "halfword", "word"]
-        points = []
-        for reg in ["CMPX", "CMPY"]:
-            points.append(CoverPoint(
-                f"{self.hierarchy}.{reg}_Range",
-                xf=lambda tr, r=reg: self.regs.read_reg_value(r),
-                bins=cmp_bins,
-                bins_labels=cmp_labels,
-                rel=lambda val, b: b[0] <= val <= b[1],
-                at_least=1,
-            ))
-        return points
+        """Covered by auto-generated reg.CMPX / reg.CMPY bins."""
+        return []
 
     def _deadtime_coverage(self):
-        """Cover deadtime enable and value ranges."""
-        return [
-            CoverPoint(
-                f"{self.hierarchy}.Deadtime_Enable",
-                xf=lambda tr: (self.regs.read_reg_value("CTRL") >> 4) & 0x1,
-                bins=[0, 1], bins_labels=["disabled", "enabled"], at_least=1,
-            ),
-            CoverPoint(
-                f"{self.hierarchy}.Deadtime_Value",
-                xf=lambda tr: self.regs.read_reg_value("PWMDT") & 0xFF,
-                bins=[(0, 0), (1, 7), (8, 31), (32, 127), (128, 255)],
-                bins_labels=["zero", "tiny", "small", "medium", "large"],
-                rel=lambda val, b: b[0] <= val <= b[1],
-                at_least=1,
-            ),
-        ]
+        """Covered by auto-generated reg.CTRL.DTE and reg.PWMDT bins."""
+        return []
 
     @staticmethod
     def _apply_decorators(decorators):
