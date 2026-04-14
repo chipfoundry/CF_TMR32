@@ -1,0 +1,207 @@
+"""TMR32 coverage groups — auto-generated + timer/PWM-specific custom coverage."""
+
+from cocotb_coverage.coverage import CoverPoint, CoverCross
+
+from cf_verify.coverage.auto_coverage import generate_coverage_from_yaml
+from cf_verify.bus_env.bus_item import bus_item
+from ip_item.tmr_item import tmr_item
+
+TMR_FIELD_BINS = {
+    ("CTRL", "TE"):  [(0, 0), (1, 1)],
+    ("CTRL", "TS"):  [(0, 0), (1, 1)],
+    ("CTRL", "P0E"): [(0, 0), (1, 1)],
+    ("CTRL", "P1E"): [(0, 0), (1, 1)],
+    ("CTRL", "DTE"): [(0, 0), (1, 1)],
+    ("CTRL", "PI0"): [(0, 0), (1, 1)],
+    ("CTRL", "PI1"): [(0, 0), (1, 1)],
+    ("CFG", "DIR"):  [(0, 0), (1, 1), (2, 2), (3, 3)],
+    ("CFG", "P"):    [(0, 0), (1, 1)],
+    ("PR", None):    [(0, 0), (1, 3), (4, 15), (16, 63), (64, 255), (256, 65535)],
+}
+
+
+class tmr_cov_groups:
+    def __init__(self, hierarchy, regs):
+        self.hierarchy = hierarchy
+        self.regs = regs
+
+        self.auto_points = generate_coverage_from_yaml(
+            regs, hierarchy, field_bins_override=TMR_FIELD_BINS,
+        )
+
+        self.dir_cov = self._direction_coverage()
+        self.mode_cov = self._mode_coverage()
+        self.pwm_cov = self._pwm_coverage()
+        self.irq_cov = self._irq_coverage()
+        self.compare_cov = self._compare_coverage()
+        self.deadtime_cov = self._deadtime_coverage()
+
+        self._init_sample(None)
+
+    def _init_sample(self, tr):
+        """Cold-start: register all CoverPoints without actually counting."""
+        @self._apply_decorators(
+            self.auto_points + self.dir_cov + self.mode_cov
+            + self.pwm_cov + self.irq_cov + self.compare_cov
+            + self.deadtime_cov
+        )
+        def _cold(tr):
+            pass
+
+    def sample(self, tr):
+        """Sample everything using a tmr_item."""
+        @self._apply_decorators(
+            self.auto_points + self.dir_cov + self.mode_cov
+            + self.pwm_cov + self.irq_cov + self.compare_cov
+            + self.deadtime_cov
+        )
+        def _s(tr):
+            pass
+        _s(tr)
+
+    def sample_bus(self, tr):
+        """Sample from bus transactions; update reg values for both reads and writes."""
+        rname = self.regs._reg_address_to_name.get(tr.addr)
+        if rname:
+            self.regs._reg_values[rname.lower()] = tr.data
+
+        @self._apply_decorators(
+            self.auto_points + self.dir_cov + self.mode_cov
+            + self.pwm_cov + self.irq_cov + self.compare_cov
+            + self.deadtime_cov
+        )
+        def _bus(tr):
+            pass
+        _bus(tr)
+
+    def _direction_coverage(self):
+        """Cover all timer count directions: up, down, up/down."""
+        return [CoverPoint(
+            f"{self.hierarchy}.CountDirection",
+            xf=lambda tr: self.regs.read_reg_value("CFG") & 0x3,
+            bins=[0, 1, 2, 3],
+            bins_labels=["none", "down", "up", "updown"],
+            at_least=1,
+        )]
+
+    def _mode_coverage(self):
+        """Cover periodic vs one-shot and direction cross."""
+        return [
+            CoverPoint(
+                f"{self.hierarchy}.TimerMode",
+                xf=lambda tr: (
+                    self.regs.read_reg_value("CFG") & 0x3,
+                    (self.regs.read_reg_value("CFG") >> 2) & 0x1,
+                ),
+                bins=[
+                    (1, 0), (1, 1),
+                    (2, 0), (2, 1),
+                    (3, 0), (3, 1),
+                ],
+                bins_labels=[
+                    "down_oneshot", "down_periodic",
+                    "up_oneshot", "up_periodic",
+                    "updown_oneshot", "updown_periodic",
+                ],
+                at_least=1,
+            ),
+        ]
+
+    def _pwm_coverage(self):
+        """Cover PWM enable states and inversion."""
+        points = []
+        points.append(CoverPoint(
+            f"{self.hierarchy}.PWM_Enables",
+            xf=lambda tr: (
+                (self.regs.read_reg_value("CTRL") >> 2) & 0x1,
+                (self.regs.read_reg_value("CTRL") >> 3) & 0x1,
+            ),
+            bins=[(0, 0), (0, 1), (1, 0), (1, 1)],
+            bins_labels=["none", "pwm1_only", "pwm0_only", "both"],
+            at_least=1,
+        ))
+        points.append(CoverPoint(
+            f"{self.hierarchy}.PWM_Inversion",
+            xf=lambda tr: (
+                (self.regs.read_reg_value("CTRL") >> 5) & 0x1,
+                (self.regs.read_reg_value("CTRL") >> 6) & 0x1,
+            ),
+            bins=[(0, 0), (0, 1), (1, 0), (1, 1)],
+            bins_labels=["none", "pwm1_inv", "pwm0_inv", "both_inv"],
+            at_least=1,
+        ))
+        for ch, field in [(0, "PWM0CFG"), (1, "PWM1CFG")]:
+            for evt_idx in range(6):
+                points.append(CoverPoint(
+                    f"{self.hierarchy}.PWM{ch}_E{evt_idx}_Action",
+                    xf=lambda tr, f=field, e=evt_idx: (
+                        (self.regs.read_reg_value(f) >> (e * 2)) & 0x3
+                    ),
+                    bins=[0, 1, 2, 3],
+                    bins_labels=["no_action", "low", "high", "invert"],
+                    at_least=1,
+                ))
+        return points
+
+    def _irq_coverage(self):
+        """Cover interrupt flags: TO, MX, MY."""
+        flags = [("TO", 0), ("MX", 1), ("MY", 2)]
+        points = []
+        for name, bit in flags:
+            points.append(CoverPoint(
+                f"{self.hierarchy}.IRQ.{name}",
+                xf=lambda tr, b=bit: (self.regs.read_reg_value("RIS") >> b) & 1,
+                bins=[0, 1], bins_labels=[f"no_{name}", name], at_least=1,
+            ))
+        points.append(CoverPoint(
+            f"{self.hierarchy}.IRQ.Mask",
+            xf=lambda tr: self.regs.read_reg_value("IM") & 0x7,
+            bins=list(range(8)),
+            bins_labels=[f"mask_{i:03b}" for i in range(8)],
+            at_least=1,
+        ))
+        return points
+
+    def _compare_coverage(self):
+        """Cover CMPX and CMPY value ranges."""
+        cmp_bins = [
+            (0, 0), (1, 0xFF), (0x100, 0xFFFF), (0x10000, 0xFFFFFFFF),
+        ]
+        cmp_labels = ["zero", "byte", "halfword", "word"]
+        points = []
+        for reg in ["CMPX", "CMPY"]:
+            points.append(CoverPoint(
+                f"{self.hierarchy}.{reg}_Range",
+                xf=lambda tr, r=reg: self.regs.read_reg_value(r),
+                bins=cmp_bins,
+                bins_labels=cmp_labels,
+                rel=lambda val, b: b[0] <= val <= b[1],
+                at_least=1,
+            ))
+        return points
+
+    def _deadtime_coverage(self):
+        """Cover deadtime enable and value ranges."""
+        return [
+            CoverPoint(
+                f"{self.hierarchy}.Deadtime_Enable",
+                xf=lambda tr: (self.regs.read_reg_value("CTRL") >> 4) & 0x1,
+                bins=[0, 1], bins_labels=["disabled", "enabled"], at_least=1,
+            ),
+            CoverPoint(
+                f"{self.hierarchy}.Deadtime_Value",
+                xf=lambda tr: self.regs.read_reg_value("PWMDT") & 0xFF,
+                bins=[(0, 0), (1, 7), (8, 31), (32, 127), (128, 255)],
+                bins_labels=["zero", "tiny", "small", "medium", "large"],
+                rel=lambda val, b: b[0] <= val <= b[1],
+                at_least=1,
+            ),
+        ]
+
+    @staticmethod
+    def _apply_decorators(decorators):
+        def wrapper(func):
+            for dec in decorators:
+                func = dec(func)
+            return func
+        return wrapper
