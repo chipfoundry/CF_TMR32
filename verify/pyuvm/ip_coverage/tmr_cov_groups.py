@@ -43,12 +43,11 @@ class tmr_cov_groups:
         self.hierarchy = hierarchy
         self.regs = regs
 
-        all_auto = generate_coverage_from_yaml(
-            regs, hierarchy, field_bins_override=TMR_FIELD_BINS,
+        self.auto_points = generate_coverage_from_yaml(
+            regs, hierarchy,
+            field_bins_override=TMR_FIELD_BINS,
+            skip_crosses=True,
         )
-        self.auto_points = [
-            p for p in all_auto if not isinstance(p, CoverCross)
-        ]
 
         self.dir_cov = self._direction_coverage()
         self.mode_cov = self._mode_coverage()
