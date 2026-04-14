@@ -78,10 +78,23 @@ class tmr_cov_groups:
         _s(tr)
 
     def sample_bus(self, tr):
-        """Sample from bus transactions; update reg values for both reads and writes."""
+        """Sample from bus transactions; update reg values for both reads and writes.
+
+        For write-only registers, only update shadow from writes — hardware
+        reads return 0 which would corrupt the shadow and prevent coverage
+        from seeing the written values.
+        """
         rname = self.regs._reg_address_to_name.get(tr.addr)
         if rname:
-            self.regs._reg_values[rname.lower()] = tr.data
+            if tr.kind == bus_item.WRITE:
+                self.regs._reg_values[rname.lower()] = tr.data
+            elif tr.kind == bus_item.READ:
+                reg = next(
+                    (r for r in self.regs._registers if r.name == rname),
+                    None,
+                )
+                if not reg or reg.mode != "w":
+                    self.regs._reg_values[rname.lower()] = tr.data
 
         @self._apply_decorators(
             self.auto_points + self.dir_cov + self.mode_cov
