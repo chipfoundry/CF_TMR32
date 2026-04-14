@@ -22,6 +22,7 @@ from cf_verify.ip_env.ip_coverage import ip_coverage
 from ip_agent.tmr_driver import tmr_driver
 from ip_agent.tmr_monitor import tmr_monitor
 from ip_coverage.tmr_coverage import tmr_coverage
+from ip_scoreboard import tmr_scoreboard
 
 
 class tmr_env(top_env):
@@ -35,6 +36,7 @@ class tmr_env(top_env):
         self.bus_agent = bus_agent("bus_agent", self)
         self.ip_agent = tmr_ip_agent("ip_agent", self)
         self.ref_model = ref_model("ref_model", self)
+        self.scoreboard = tmr_scoreboard("scoreboard", self)
         self.ip_coverage = tmr_coverage("ip_coverage", self)
         self.ip_logger = ip_logger("ip_logger", self)
 
