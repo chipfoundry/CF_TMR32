@@ -115,7 +115,7 @@ class tmr_coverage_closure_seq(uvm_sequence):
             await self._run_timer(direction=2, periodic=1, reload_val=20,
                                   cmpx=cx, cmpy=cy)
             await self._r("ris_match", "RIS")
-            await self._w("icr", "ICR", 0x7)
+            await self._w("icr", "IC", 0x7)
 
     async def _ctrl_combos(self):
         """Sweep CTRL field combinations to hit all 1-bit field bins."""
@@ -212,10 +212,10 @@ class tmr_coverage_closure_seq(uvm_sequence):
         await self._run_timer(direction=2, periodic=1, reload_val=20,
                               cmpx=5, cmpy=15)
         await self._r("ris_all", "RIS")
-        await self._w("icr_all", "ICR", 0x7)
+        await self._w("icr_all", "IC", 0x7)
 
         for d in [1, 3]:
             await self._run_timer(direction=d, periodic=1, reload_val=20,
                                   cmpx=5, cmpy=15)
             await self._r("ris_dir", "RIS")
-            await self._w("icr_dir", "ICR", 0x7)
+            await self._w("icr_dir", "IC", 0x7)
