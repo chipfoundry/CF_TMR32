@@ -4,7 +4,7 @@ import random
 
 from pyuvm import uvm_sequence, ConfigDB
 
-from cf_verify.bus_env.bus_seq_lib import write_reg_seq
+from cf_verify.bus_env.bus_seq_lib import write_reg_seq, reset_seq
 
 
 class tmr_config_seq(uvm_sequence):
@@ -28,6 +28,8 @@ class tmr_config_seq(uvm_sequence):
         self.im = im
 
     async def body(self):
+        await reset_seq("rst").start(self.sequencer)
+
         regs = ConfigDB().get(None, "", "bus_regs")
         addr = regs.reg_name_to_address
 
